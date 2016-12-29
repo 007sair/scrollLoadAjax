@@ -1,0 +1,304 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, minimal-ui" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="format-detection"content="telephone=no, email=no" />
+<title>Examples</title>
+<style>
+*{
+	margin: 0;
+	padding: 0;
+}
+.box {
+	list-style-type: none;
+	font-size: 0;
+	max-width: 640px;
+	margin: 0 auto;
+}
+.box li {
+	display: inline-block;
+	vertical-align: top;
+	width: 47%;
+	margin: 0.3rem 0 0 2%;
+	border: 1px solid #ccc;
+	height: 10rem;
+	font-size: 32px;
+	text-align: center;
+	box-sizing: border-box;
+}
+.box li img {
+	width: 100%;
+}
+.box li.loaded {
+	border-color: #f00;
+}
+.box li.loadedImg {
+	color: blue;
+}
+</style>
+<script>(function(a,d){var b=a.documentElement,e="orientationchange"in window?"orientationchange":"resize",c=function(){var a=b.clientWidth;a&&(b.style.fontSize=640<=a?"40px":a/320*20+"px")};a.addEventListener&&(d.addEventListener(e,c,!1),a.addEventListener("DOMContentLoaded",c,!1))})(document,window);</script> 
+</head>
+<body>
+
+	<ul class="box" id="box">
+	</ul>
+
+<script src="http://cdn.bootcss.com/jquery/1.8.3/jquery.min.js"></script>
+<script>
+$(function(){
+	
+	//for test
+	var html = '';
+	for (var i = 0; i < 100; i++) {
+		if (i < 33) {
+			html += '<li data-sku="'+ i +'"><img src="images/blank.png" data-src="images/img.jpg"><p>'+ i +'sku</p></li>';
+		} else if(i > 66) {
+			html += '<li data-group="'+ i +'"><img src="images/blank.png" data-src="images/img.jpg"><p>'+ i +'group</p></li>';
+		} else {
+			html += '<li data-list="'+ i +'"><img src="images/blank.png" data-src="images/img.jpg"><p>'+ i +'list</p></li>';
+		}
+	};
+	$('#box').append(html);
+
+
+
+	/**
+	 * 图片懒加载 & 分段请求api数据
+	 */
+	function LazyView(opts) {
+		var obj = {
+			derection: 'down', //默认方向：手势向上  页面scrollTop越来越大
+			count: 10, //每次要拼接成ajax参数的sku个数
+			delay: 200,
+			imgAttr: 'data-src',
+			cb: 'fn'
+		};
+		this.opts = $.extend(true, obj, opts);
+
+		this.poll = null;
+		this.aType = ['sku', 'list', 'group']; //data-sku  data-list
+		this.oTypeIds = {};
+
+		this.init();
+	}
+
+	LazyView.prototype = {
+		constructor: LazyView,
+		init: function() {
+			/**
+			 * todo: offset 会影响ajax itemIn的计算范围
+			 */
+			var offsetAll = this.opts.offset || 0;
+			var offsetVertical = this.opts.offsetVertical || offsetAll;
+			var offsetHorizontal = this.opts.offsetHorizontal || offsetAll;
+
+			this.offset = {
+				t: this.optionToInt(this.opts.offsetTop, offsetVertical),
+				b: this.optionToInt(this.opts.offsetBottom, offsetVertical),
+				l: this.optionToInt(this.opts.offsetLeft, offsetHorizontal),
+				r: this.optionToInt(this.opts.offsetRight, offsetHorizontal)
+			};
+
+			this.view = {
+				l: 0 - this.offset.l,
+				t: 0 - this.offset.t,
+				b: (window.innerHeight || document.documentElement.clientHeight) + this.offset.b,
+				r: (window.innerWidth || document.documentElement.clientWidth) + this.offset.r
+			};
+
+			this.createNodeArr();
+			this.initInfo();
+			this.bindEvent();
+		},
+		initInfo: function() { //根据data attr 初始化sku list group
+			var _this = this,
+				type;
+			for (var i = 0; i < this.aType.length; i++) {
+				type = this.aType[i];
+				this.oTypeIds[type] = [];
+				$('[data-' + type + ']').each(function() {
+					_this.oTypeIds[_this.aType[i]].push(this)
+				});
+			};
+		},
+		createNodeArr: function(){
+			var _this = this;
+			this.nodes = []; //含有data-src的jq对象的集合
+			$('['+ this.opts.imgAttr +']').each(function() {
+				_this.nodes.push(this)
+			});
+		},
+		isInView: function(element, view) {
+			var box = element.getBoundingClientRect();
+			return (box.right >= view.l && box.bottom >= view.t && box.left <= view.r && box.top <= view.b);
+		},
+		loadImage: function() { //图片懒加载
+			if (!this.nodes.length) {
+				console.log('元素图片全部加载完毕!')
+				return false;
+			};
+
+			var elem;
+			for (var i = 0; i < this.nodes.length; i++) {
+				elem = this.nodes[i];
+				if (elem.getAttribute(this.opts.imgAttr) && this.isInView(elem, this.view)) {
+					elem.setAttribute('src', elem.getAttribute(this.opts.imgAttr));
+					elem.removeAttribute(this.opts.imgAttr);
+				};
+			};
+		},
+		loadItem: function(arr, type) { //分段处理进入视窗的元素 元素可能是sku或list   arr =>  元素的集合   type => 元素类型 可能是sku、list、group   
+			var _this = this, 
+				flag, 				//根据方向获取arr_viewIn数组中的第一个或最后一个
+				arr_viewIn = []; 	//所有出现在视窗内的元素在this.skus中的索引位置
+
+			for (var i = 0; i < arr.length; i++) {
+				if (this.isInView(arr[i], this.view)) {
+					arr_viewIn.push(i)
+				}
+			};
+
+			//'up' => flag = arr_viewIn中的最后一个元素
+			//'down' => flag = arr_viewIn中的第一个元素
+			//arr_viewIn为空，返回-1
+			flag = arr_viewIn.length ? (this.opts.derection == 'up' ? arr_viewIn[arr_viewIn.length - 1] : arr_viewIn[0]) : -1;
+
+			var items = [], arr_ids = [], ids;
+			if (flag !== -1 || arr.length < this.opts.count) { //当未加载的sku个数小于约定的总数时 直接加载
+				items = this.cutArray(arr, this.opts.derection, flag); //按需截取到的元素
+				for (var i = 0; i < items.length; i++) {
+					items[i].style.borderColor = '#f00';
+					arr_ids.push(items[i].getAttribute('data-' + type));
+				};
+				ids = arr_ids.join('-');
+				this.opts[this.opts.cb + type] && this.opts[this.opts.cb + type].call(this, items, ids, type);
+			};
+
+		},
+		cutArray: function(arr, derection, index){ //根据滚动方向，截取arr数组  index为this.skus中元素的实时索引
+			var len = arr.length;
+
+			if (derection == 'up') { //向上滑动 index有可能为负数 强行换成0就可以
+				index = (index - this.opts.count + 1) > 0 ? index - this.opts.count + 1 : 0; //索引位置 = 当前位置 - 总个数 + 偏移1位
+			}
+
+			if (len > this.opts.count) {
+				//截取的位置向右不足count个时 index从len - count开始
+				//[e.g.]: 50-51-52-53-54-55-56-57-58-59-85-86-87-88-89-90-91-92-93-94-95-96-97-98-99-100
+				//index=21 count=25 len=26
+				//没有如下逻辑 index=21 return的数组为[96,97...99,100]
+				//有如下逻辑，index=len-count=1 return的数组为[51,52,...,99,100]
+				// console.log('index:', index, 'len:', len, index > len - this.opts.count)
+				index = index > len - this.opts.count ? len - this.opts.count : index;
+			} else {
+				index = 0
+			}
+
+			return arr.splice(index, this.opts.count);
+		},
+		debounceOrThrottle: function() {
+			var _this = this;
+			clearTimeout(_this.poll);
+			this.poll = setTimeout(function() {
+				_this.loadImage();
+				for (var i = 0; i < _this.aType.length; i++) {
+					var type = _this.aType[i];
+					var arr = _this.oTypeIds[type];
+					if (arr.length) {
+						_this.loadItem(arr, type)
+					} else {
+						console.log(type, '已全部加载。')
+					}
+				};
+				_this.poll = null;
+			}, _this.opts.delay);
+		},
+		optionToInt: function(opt, fallback) {
+			return parseInt(opt || fallback, 10)
+		},
+		bindEvent: function(){
+			var _this = this;
+
+			if (document.addEventListener) {
+				window.addEventListener('scroll', function() {
+					_this.debounceOrThrottle()
+				}, false);
+				window.addEventListener('load', function() {
+					_this.debounceOrThrottle()
+				}, false);
+			} else {
+				window.attachEvent('onscroll', function() {
+					_this.debounceOrThrottle()
+				});
+				window.attachEvent('onload', function() {
+					_this.debounceOrThrottle()
+				});
+			}
+
+			//滚动方向
+			var upflag = 1;
+			var downflag = 1;
+			//scroll滑动,上滑和下滑只执行一次！
+			this.scrollDirect(function(direction) {
+				if (direction == "down") {
+					if (downflag) {
+						_this.opts.derection = 'down';
+						downflag = 0;
+						upflag = 1;
+					}
+				}
+				if (direction == "up") { //到底部时会触发一次up
+					if (upflag) {
+						_this.opts.derection = 'up';
+						downflag = 1;
+						upflag = 0;
+					}
+				}
+			});
+		},
+		scrollDirect: function(fn) {
+			var beforeScrollTop = document.body.scrollTop;
+			fn = fn || function() {};
+			window.addEventListener("scroll", function() {
+				var afterScrollTop = document.body.scrollTop;
+				delta = afterScrollTop - beforeScrollTop;
+				beforeScrollTop = afterScrollTop;
+
+				var scrollTop = $(this).scrollTop();
+				var scrollHeight = $(document).height();
+				var windowHeight = $(this).height();
+				if (scrollTop + windowHeight > scrollHeight - 10) { //滚动到底部执行事件
+					// fn('up');
+					return;
+				}
+				if (afterScrollTop < 10 || afterScrollTop > $(document.body).height - 10) { //在顶部会触发一次up
+					// fn('up');
+				} else {
+					if (Math.abs(delta) < 10) {
+						return false;
+					}
+					fn(delta > 0 ? "down" : "up");
+				}
+			}, false);
+		}
+	};
+
+	var view = new LazyView({
+		count: 20,
+		fnsku: function(items, ids, type) {
+			console.log(ids, type)
+		}
+	});
+
+	console.log(view)
+
+
+});
+</script>
+
+    
+</body>
+</html>
