@@ -49,6 +49,70 @@
 <script src="http://cdn.bootcss.com/jquery/1.8.3/jquery.min.js"></script>
 <script>
 $(function(){
+
+	var _tool = {
+		format: function(src, pos) {
+			if (!arguments.length) return -1;
+			if (!isNaN(src)) {
+				pos = (src > 0 && src < 1) ? 2 : pos || 1;
+				return Math.round(src * Math.pow(10, pos)) / Math.pow(10, pos);
+			}
+			return src
+		},
+		device: function() {
+			return (window.location.href.indexOf('m.mia.com') > -1 || window.location.href.indexOf('m.miyabaobei.com') > -1) ? 'wap' : 'pc';
+		},
+		isApp: function() {
+			var href = window.location.href;
+			var re = href.indexOf('_app');
+			return (navigator.userAgent.indexOf('miyabaobei_') > -1 || re !== -1) ? true : false;
+		},
+		isWx: function() {
+			var ua = window.navigator.userAgent.toLowerCase();
+			return (ua.match(/MicroMessenger/i) == 'micromessenger') ? true : false;
+		},
+		debug: function(){
+			var param = this.parse(window.location.href).params || {};
+			return param.debug
+		},
+		log: function(){
+			if (!window.console) return false;
+			if (_tool.debuger || _tool.debug()) {
+				console.log.apply(console, arguments);
+			}
+		},
+		parse: function(url) {
+			var a = document.createElement('a');
+			a.href = url;
+			return {
+				source: url,
+				protocol: a.protocol.replace(':', ''),
+				host: a.hostname,
+				port: a.port,
+				query: a.search,
+				params: (function() {
+					var ret = {},
+						seg = a.search.replace(/^\?/, '').split('&'),
+						len = seg.length,
+						i = 0,
+						s;
+					for (; i < len; i++) {
+						if (!seg[i]) {
+							continue;
+						}
+						s = seg[i].split('=');
+						ret[s[0]] = s[1];
+					}
+					return ret;
+				})(),
+				file: (a.pathname.match(/\/([^\/?#]+)$/i) || [, ''])[1],
+				hash: a.hash.replace('#', ''),
+				path: a.pathname.replace(/^([^\/])/, '/$1'),
+				relative: (a.href.match(/tps?:\/\/[^\/]+(.+)/) || [, ''])[1],
+				segments: a.pathname.replace(/^\//, '').split('/')
+			};
+		}
+	};
 	
 	//for test
 	var html = '';
