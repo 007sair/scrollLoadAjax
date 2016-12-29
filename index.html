@@ -230,15 +230,10 @@ $(function(){
 			//arr_viewIn为空，返回-1
 			flag = arr_viewIn.length ? (this.opts.derection == 'up' ? arr_viewIn[arr_viewIn.length - 1] : arr_viewIn[0]) : -1;
 
-			var items = [], arr_ids = [], ids;
+			var items;
 			if (flag !== -1 || arr.length < this.opts.count) { //当未加载的sku个数小于约定的总数时 直接加载
 				items = this.cutArray(arr, this.opts.derection, flag); //按需截取到的元素
-				for (var i = 0; i < items.length; i++) {
-					items[i].style.borderColor = '#f00';
-					arr_ids.push(items[i].getAttribute('data-' + type));
-				};
-				ids = arr_ids.join('-');
-				this.opts[this.opts.cb + type] && this.opts[this.opts.cb + type].call(this, items, ids, type);
+				this.opts[this.opts.cb + type] && this.opts[this.opts.cb + type].call(this, items, type);
 			};
 
 		},
@@ -351,13 +346,18 @@ $(function(){
 	};
 
 	var view = new LazyView({
-		count: 20,
-		fnsku: function(items, ids, type) {
-			console.log(ids, type)
+		count: 5,
+		fnsku: function(items, type) {
+			var ids, arr_ids = [];
+			var len = items.length;
+			for (var i = 0; i < len; i++) {
+				items[i].style.borderColor = '#f00';
+				arr_ids.push(items[i].getAttribute('data-' + type));
+			};
+			ids = arr_ids.join('-');
+			console.log(ids)
 		}
 	});
-
-	console.log(view)
 
 
 });
